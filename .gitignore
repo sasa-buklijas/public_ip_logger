@@ -1,0 +1,18 @@
+# OSX
+.DS_Store
+
+# code editor
+.vscode/settings.json
+
+# DB editor
+*.db-shm
+*.db-wal
+
+# Python
+/venv*
+.python-version
+
+# program output
+public_ip.db
+index.html
+*.log*
