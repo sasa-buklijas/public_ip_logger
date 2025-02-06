@@ -15,12 +15,15 @@ python -m pip install -r requirements.txt
 python ip_to_sqlite.py
 # this will make 2x files
 # public_ip.db -> what is SQLite DB
-# index.html   -> just HTML with IP addresses, first seen, last, duration, etc
+# index.html   -> HTML report with IP addresses, first seen, last, duration, etc
 ```
 Idea is to run `python ip_to_sqlite.py` in crontab
 ```
 @reboot
-* * * * * /path_to/python ip_to_sqlite.py
+* * * * * cd /home/pi/ip_logger && ./venv-3_11_2/bin/python ip_to_sqlite.py
+
+# look at index.html via web browser
+# you can also server index.html as static webpage with web server (eg. apache, nginx, etc)
 ```
 
 ## Supported Python Version
