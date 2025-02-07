@@ -1,6 +1,6 @@
 # Overview
 Python program that log public IP address in SQLite database.  
-Made for Rapberry Pi Zero 2 W.  
+Made for Raspberry Pi Zero 2 W.  
 
 ## Usage
 ```
