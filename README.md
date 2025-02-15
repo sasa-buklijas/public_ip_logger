@@ -1,6 +1,8 @@
 # Overview
 Python program that log public IP address in SQLite database.  
+Only new/change IP is added to DB, if IP is same as last time program was run, then only `last_time_seen` is updated.  
 Made for Raspberry Pi Zero 2 W.  
+Raspberry Pi Zero 2 W, at least in my experience get stuck ever few days, so there is `gap` table to track when it got stuck.  
 
 ## Usage
 ```
@@ -32,19 +34,26 @@ Others are probably also working, this one is used/tested by myself.
 
 ## External Packages
 [https://github.com/psf/requests](requests)  
-[https://github.com/pudo/dataset](dataset)
+[https://github.com/pudo/dataset](dataset)  
 [https://github.com/python-humanize/humanize](humanize)
 
 ## SQLite database structure
-One table:
+2x tables:
 ```
-$ sqlite3 public_ip.db ".schema public_ip"
+$ sqlite3 public_ip.db ".schema"
 
 CREATE TABLE public_ip (
 	id INTEGER NOT NULL,
 	ip TEXT,
 	first_time_seen FLOAT,
 	last_time_seen FLOAT,
+	PRIMARY KEY (id)
+);
+
+CREATE TABLE gap (
+	id INTEGER NOT NULL,
+	start FLOAT,
+	"end" FLOAT,
 	PRIMARY KEY (id)
 );
 ```
