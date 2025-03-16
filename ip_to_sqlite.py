@@ -6,10 +6,13 @@ import logging.handlers
 import dataset
 import requests
 import humanize
+from tenacity import retry, stop_after_attempt, wait_fixed
 
-VERSION = '1.1.1'
+VERSION = '1.1.2'
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))  # 3 attempts, 2 seconds between retries
 def get_public_ip():
+    #logging.debug('IN get_public_ip')
     url = "https://api.ipify.org/"
     try:
         response = requests.get(url, timeout=5)  # 5-second timeout
@@ -19,6 +22,8 @@ def get_public_ip():
         raise TimeoutError("Request to api.ipify.org timed out.")
     except requests.RequestException as e:
         raise RuntimeError(f"Request failed: {e}")
+    #finally:   # it is working, but I do not need it
+    #    logging.info(get_public_ip.statistics)
 
 
 # to remove and abstract complexity of DB operations
@@ -61,6 +66,9 @@ def public_ip_to_db():
     except Exception as e:
         logging.exception(e)
         exit(10)
+    finally:
+        if get_public_ip.statistics['attempt_number'] != 1:
+            logging.warning(f'{get_public_ip.statistics=}')
     response_public_ip_time = time.time()
     logging.info(f'API call took {(response_public_ip_time - program_start_time):.3f} {current_public_ip=}')
 

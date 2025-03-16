@@ -35,7 +35,8 @@ Others are probably also working, this one is used/tested by myself.
 ## External Packages
 [https://github.com/psf/requests](requests)  
 [https://github.com/pudo/dataset](dataset)  
-[https://github.com/python-humanize/humanize](humanize)
+[https://github.com/python-humanize/humanize](humanize)  
+[https://github.com/jd/tenacity](tenacity)  
 
 ## SQLite database structure
 2x tables:
