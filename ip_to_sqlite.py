@@ -8,7 +8,7 @@ import requests
 import humanize
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-VERSION = '1.1.2'
+VERSION = '1.1.3'
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))  # 3 attempts, 2 seconds between retries
 def get_public_ip():
@@ -86,6 +86,7 @@ def public_ip_to_db():
         # Raspberry Pi Zero 2 W was not designed to run 24/7, usually it get stuck ever few days
         # this is just table to track when it got stuck
         if since_last_check > 100:  # expected 60 seconds on average, gave 40 as buffer 
+            logging.warning(f'{since_last_check:.2f=}')
             db.insert_gap(last_time_seen, program_start_time)
 
         if current_public_ip == last_public_ip: # IP same
@@ -121,7 +122,7 @@ def generate_webpage():
     # Use StringIO to efficiently build the HTML in memory
     html = io.StringIO()
     html.write("<html><head><title>IP Logger</title></head><body>\n")
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     # Get the current local time with the system's timezone
     current_time = datetime.now().astimezone()
