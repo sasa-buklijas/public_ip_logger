@@ -1,5 +1,7 @@
 import io
 import time
+import random
+import ipaddress
 import logging
 import logging.handlers
 # pip packages
@@ -8,22 +10,46 @@ import requests
 import humanize
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-VERSION = '1.1.3'
+VERSION = '1.1.4'
 
-@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))  # 3 attempts, 2 seconds between retries
-def get_public_ip():
-    #logging.debug('IN get_public_ip')
-    url = "https://api.ipify.org/"
+@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))  # 2 attempts, 2 seconds between retries
+def get_public_ip() -> str:
+    IPIFY = 'https://api.ipify.org/'
+    AWS = 'https://checkip.amazonaws.com'
+    ICANHAZIP = 'https://icanhazip.com/'
+    IFCONFIG = 'https://ifconfig.me/'
+    IPINFO = 'https://ipinfo.io/ip'
+    external_api = (IPIFY, AWS, ICANHAZIP, IFCONFIG, IPINFO, )
+    #external_api = (IPINFO,)   # just for developer , when adding new enteral API for IP, to test is 
+    external_ip = '__UNKNOWN_IP___'
+
+    eairo = random.sample(external_api, k=len(external_api)) # external_api_in_random_order
+    for url in eairo:
+        try:
+            response = requests.get(url, timeout=5)  # 5-second timeout
+            response.raise_for_status()  # Raise HTTP errors (4xx, 5xx)
+            if url in (IPIFY, IFCONFIG, IPINFO, ):
+                external_ip = response.text
+                break
+            elif url in (AWS, ICANHAZIP, ):
+                #logging.debug(f'{response.text=} {response.text.strip()=}')
+                external_ip = response.text.strip()
+                break
+            else:
+                logging.error(f'Unknown {url=} {response.text=}')
+                raise ValueError(f'Unknown {url=} {response.text=}')
+        except requests.Timeout:
+            logging.error(f'Request to {url=} timed out.')
+        except requests.RequestException as e:
+            logging.exception(e)
+
+    logging.info(f'{url=} {external_ip=}')
     try:
-        response = requests.get(url, timeout=5)  # 5-second timeout
-        response.raise_for_status()  # Raise HTTP errors (4xx, 5xx)
-        return response.text
-    except requests.Timeout:
-        raise TimeoutError("Request to api.ipify.org timed out.")
-    except requests.RequestException as e:
-        raise RuntimeError(f"Request failed: {e}")
-    #finally:   # it is working, but I do not need it
-    #    logging.info(get_public_ip.statistics)
+        ipaddress.IPv4Address(external_ip)
+        return external_ip
+    except ipaddress.AddressValueError:
+        logging.error(f'Not valid {external_ip=}')
+        raise ValueError('Failed to retrieve external IP')
 
 
 # to remove and abstract complexity of DB operations
@@ -37,9 +63,9 @@ class DB():
         return self._public_ip_table.insert(dict(ip=ip, first_time_seen=row_time, last_time_seen=row_time))
 
     def get_last_row(self):
-        results = list(self._public_ip_table.all())
-        self._last_row = self._public_ip_table.find_one(order_by='-last_time_seen')
+        #results = list(self._public_ip_table.all())
         #logging.debug(f'{results=}')
+        self._last_row = self._public_ip_table.find_one(order_by='-last_time_seen')
         #logging.debug(f'{self._last_row=}')
         return self._last_row
 
@@ -86,7 +112,7 @@ def public_ip_to_db():
         # Raspberry Pi Zero 2 W was not designed to run 24/7, usually it get stuck ever few days
         # this is just table to track when it got stuck
         if since_last_check > 100:  # expected 60 seconds on average, gave 40 as buffer 
-            logging.warning(f'{since_last_check:.2f=}')
+            logging.warning(f'{since_last_check=:.2f}')
             db.insert_gap(last_time_seen, program_start_time)
 
         if current_public_ip == last_public_ip: # IP same
@@ -216,5 +242,8 @@ if __name__ == '__main__':
     # Suppress logging from urllib3 library
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-    public_ip_to_db()
-    generate_webpage()
+    try:
+        public_ip_to_db()
+        generate_webpage()
+    except Exception as e:
+        logging.exception(e)
