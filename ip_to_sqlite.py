@@ -10,7 +10,7 @@ import requests
 import humanize
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-VERSION = '1.1.4'
+VERSION = '1.1.5'
 
 @retry(stop=stop_after_attempt(2), wait=wait_fixed(2))  # 2 attempts, 2 seconds between retries
 def get_public_ip() -> str:
@@ -41,7 +41,7 @@ def get_public_ip() -> str:
         except requests.Timeout:
             logging.error(f'Request to {url=} timed out.')
         except requests.RequestException as e:
-            logging.exception(e)
+            logging.error(f'Request to {url=} error {e=}')
 
     logging.info(f'{url=} {external_ip=}')
     try:
