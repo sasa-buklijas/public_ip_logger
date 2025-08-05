@@ -5,14 +5,15 @@ import ipaddress
 import logging
 import logging.handlers
 # pip packages
+import ping3
 import dataset
 import requests
 import humanize
-from tenacity import retry, stop_after_attempt, wait_fixed
+#from tenacity import retry, stop_after_attempt, wait_fixed
 
-VERSION = '1.1.5'
+VERSION = '1.1.7'
 
-@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))  # 2 attempts, 2 seconds between retries
+#@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))  # 2 attempts, 2 seconds between retries
 def get_public_ip() -> str:
     IPIFY = 'https://api.ipify.org/'
     AWS = 'https://checkip.amazonaws.com'
@@ -21,7 +22,7 @@ def get_public_ip() -> str:
     IPINFO = 'https://ipinfo.io/ip'
     external_api = (IPIFY, AWS, ICANHAZIP, IFCONFIG, IPINFO, )
     #external_api = (IPINFO,)   # just for developer , when adding new enteral API for IP, to test is 
-    external_ip = '__UNKNOWN_IP___'
+    external_ip = '__UNKNOWN_IP__'
 
     eairo = random.sample(external_api, k=len(external_api)) # external_api_in_random_order
     for url in eairo:
@@ -29,6 +30,7 @@ def get_public_ip() -> str:
             response = requests.get(url, timeout=5)  # 5-second timeout
             response.raise_for_status()  # Raise HTTP errors (4xx, 5xx)
             if url in (IPIFY, IFCONFIG, IPINFO, ):
+                #logging.debug(f'{response.text=} {response.text.strip()=}')
                 external_ip = response.text
                 break
             elif url in (AWS, ICANHAZIP, ):
@@ -42,6 +44,16 @@ def get_public_ip() -> str:
             logging.error(f'Request to {url=} timed out.')
         except requests.RequestException as e:
             logging.error(f'Request to {url=} error {e=}')
+
+    # all 5x API failed for some reason
+    if external_ip == '__UNKNOWN_IP__':
+        local_router_ping_result = ping3.ping('192.168.1.1') # Local Router, check if it is working
+        logging.warning(f'{local_router_ping_result=}')
+
+        ping_result = ping3.ping('8.8.8.8') # Google DNS, check if internet is working
+        logging.warning(f'{ping_result=}')
+        if ping_result is None: # If timed out (no reply), returns None
+            logging.warning('No internet access or Google down.')
 
     logging.info(f'{url=} {external_ip=}')
     try:
@@ -57,6 +69,7 @@ class DB():
     def __init__(self):
         self._db = dataset.connect('sqlite:///public_ip.db')
         self._public_ip_table = self._db['public_ip']
+        self._error_table = self._db['errors']
         self._gap_table = self._db['gap']
 
     def add_new_row(self, ip: str, row_time: float):
@@ -76,7 +89,7 @@ class DB():
         return self._public_ip_table.find(order_by='last_time_seen', _limit=limit)
 
     def insert_gap(self, start, end):
-        self._gap_table.insert(dict(start=start, end=end))
+        self._gap_table.insert(dict(start=start, end=end, reason=''))
 
     def get_gap_rows(self, limit = None):
         return self._gap_table.find(order_by='-end', _limit=limit)
@@ -84,17 +97,33 @@ class DB():
     def number_of_gap_rows(self):
         return self._gap_table.count()
 
+    def number_of_error_rows(self):
+        return self._error_table.count()
+
+    def get_error_rows(self, limit = None):
+        return self._error_table.find(order_by='-unix_time_stamp', _limit=limit)
+
+    def add_error(self, uts: float, error: str):
+        self._error_table.insert(dict(unix_time_stamp=uts, error=error))
+
+    def close(self):
+        self._db.close()
+
 
 def public_ip_to_db():
     program_start_time = time.time()
     try:
         current_public_ip = get_public_ip()
     except Exception as e:
+        db = DB()
+        db.add_error(program_start_time, str(e))
+        db.close()
+        #logging.debug(f'{e=} --- {str(e)=}')
         logging.exception(e)
-        exit(10)
-    finally:
-        if get_public_ip.statistics['attempt_number'] != 1:
-            logging.warning(f'{get_public_ip.statistics=}')
+        return False
+    #finally:
+    #    if get_public_ip.statistics['attempt_number'] != 1:
+    #        logging.warning(f'{get_public_ip.statistics=}')
     response_public_ip_time = time.time()
     logging.info(f'API call took {(response_public_ip_time - program_start_time):.3f} {current_public_ip=}')
 
@@ -111,7 +140,7 @@ def public_ip_to_db():
         # I am running this on Raspberry Pi Zero 2 W, ever minute from crontab
         # Raspberry Pi Zero 2 W was not designed to run 24/7, usually it get stuck ever few days
         # this is just table to track when it got stuck
-        if since_last_check > 100:  # expected 60 seconds on average, gave 40 as buffer 
+        if since_last_check > 180:  # expected 60 seconds on average, gave 40 as buffer 
             logging.warning(f'{since_last_check=:.2f}')
             db.insert_gap(last_time_seen, program_start_time)
 
@@ -133,6 +162,9 @@ def public_ip_to_db():
         primary_key_id = db.add_new_row(current_public_ip , program_start_time)
         if primary_key_id != 1:
                 logging.error(f'SOME PROBLEM, EXPECTED 1 for primary_key_id, but {primary_key_id=}')
+
+    # to flush SQLite WAL
+    db.close()
 
     # 2x spaces for better output
     logging.info(f'public_ip_to_db  took {(time.time() - program_start_time):.3f} seconds')
@@ -197,19 +229,32 @@ def generate_webpage():
     html.write("".join(reversed(table_rows_oldest_first)))
     html.write("</table>")
 
+    # error table
+    error_rows = db.number_of_error_rows()
+    if error_rows > 0:
+        html.write("<h2>Error</h2><table border='1'>\n")
+        columns = ['id', 'Time', 'Error']
+        html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
+        for row in db.get_error_rows():
+            #logging.debug(f'{row=}')
+            utc = datetime.fromtimestamp(row['unix_time_stamp']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
+            error = row['error']
+            html.write("<tr>" + "".join(f"<td>{val}</td>" for val in [row['id'], utc, error]) + "</tr>\n")
+        html.write("</table>")
+
     # gap table
     gap_rows = db.number_of_gap_rows()
     #logging.debug(f'{gap_rows=}')
     if gap_rows > 0:
         html.write("<h2>Gap</h2><table border='1'>\n")
-        columns = ['id', 'Start Time', 'End Time', 'Gap Duration']
+        columns = ['id', 'Start Time', 'End Time', 'Gap Duration', 'Reason']
         html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
         for row in db.get_gap_rows():
             #logging.debug(f'{row=}')
             start = datetime.fromtimestamp(row['start']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
             end = datetime.fromtimestamp(row['end']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
             duration = humanize.precisedelta(row['end'] - row['start'])
-            html.write("<tr>" + "".join(f"<td>{val}</td>" for val in [row['id'], start, end, duration]) + "</tr>\n")
+            html.write("<tr>" + "".join(f"<td>{val}</td>" for val in [row['id'], start, end, duration, row['reason']]) + "</tr>\n")
         html.write("</table>")
 
     # Footer
@@ -218,6 +263,9 @@ def generate_webpage():
     # Write to file
     with open("index.html", "w") as f:
         f.write(html.getvalue())
+
+    # to flush SQLite WAL
+    db.close()
 
     logging.info(f'generate_webpage took {(time.time() - start_time):.3f} seconds')
 
@@ -243,7 +291,10 @@ if __name__ == '__main__':
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     try:
+        logging.info('main ---START---')
         public_ip_to_db()
         generate_webpage()
     except Exception as e:
         logging.exception(e)
+    finally:
+        logging.info('main ----END----')

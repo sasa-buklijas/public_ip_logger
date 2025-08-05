@@ -10,7 +10,6 @@
 
 # Python
 /venv*
-.python-version
 
 # program output
 public_ip.db
