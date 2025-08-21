@@ -1,9 +1,12 @@
 import io
 import time
 import random
+import tomllib
 import ipaddress
 import logging
 import logging.handlers
+from pathlib import Path
+from importlib.metadata import version, PackageNotFoundError
 # pip packages
 import ping3
 import dataset
@@ -125,6 +128,7 @@ def public_ip_to_db():
     #    if get_public_ip.statistics['attempt_number'] != 1:
     #        logging.warning(f'{get_public_ip.statistics=}')
     response_public_ip_time = time.time()
+    
     logging.info(f'API call took {(response_public_ip_time - program_start_time):.3f} {current_public_ip=}')
 
     db: DB = DB()
@@ -270,6 +274,23 @@ def generate_webpage():
     logging.info(f'generate_webpage took {(time.time() - start_time):.3f} seconds')
 
 
+def get_version():
+    package_name = "public-ip-logger"
+
+    # First try installed metadata
+    try:
+        return version(package_name)
+    except PackageNotFoundError:
+        # Fallback: read pyproject.toml in the same folder
+        pyproject = Path(__file__).with_name("pyproject.toml")
+        try:
+            with open(pyproject, "rb") as f:
+                data = tomllib.load(f)
+            return data["project"]["version"]
+        except Exception:
+            return "unknown"
+
+
 if __name__ == '__main__':
     # set up logging
     logging.basicConfig(
@@ -287,14 +308,15 @@ if __name__ == '__main__':
             logging.StreamHandler()
         ]
     )
-    # Suppress logging from urllib3 library
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    program = Path(__file__).stem
+    version = get_version()
 
     try:
-        logging.info('main ---START---')
+        logging.info(f'{program} v{version} ---START---')
         public_ip_to_db()
         generate_webpage()
     except Exception as e:
         logging.exception(e)
     finally:
-        logging.info('main ----END----')
+        logging.info(f'{program} v{version} ----END----')
