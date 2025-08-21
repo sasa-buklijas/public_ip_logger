@@ -24,7 +24,6 @@ uv run python ip_to_sqlite.py
 ```
 Idea is to run `python ip_to_sqlite.py` in crontab
 ```
-@reboot
 * * * * * cd /home/pi/public_ip_logger && ./.venv/bin/python ip_to_sqlite.py
 
 # look at index.html via web browser
