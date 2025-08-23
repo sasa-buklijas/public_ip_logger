@@ -291,7 +291,7 @@ def get_version():
             return "unknown"
 
 
-if __name__ == '__main__':
+def main():
     # set up logging
     logging.basicConfig(
         level=logging.DEBUG,
@@ -320,3 +320,7 @@ if __name__ == '__main__':
         logging.exception(e)
     finally:
         logging.info(f'{program} v{version} ----END----')
+
+
+if __name__ == '__main__':
+    main()

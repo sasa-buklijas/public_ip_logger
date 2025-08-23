@@ -10,3 +10,6 @@ dependencies = [
     "ping3>=5.1.5",
     "requests>=2.32.5",
 ]
+
+[project.scripts]
+public-ip-logger = "ip_to_sqlite:main"

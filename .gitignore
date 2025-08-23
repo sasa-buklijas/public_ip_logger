@@ -10,6 +10,10 @@
 
 # Python
 /venv*
+*.pyc
+build/
+public_ip_logger.egg-info/
+
 
 # program output
 public_ip.db
