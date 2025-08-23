@@ -18,9 +18,12 @@ cd public_ip_logger
 # run script
 uv run python ip_to_sqlite.py
 
-# this will make 2x files
+# this will make 3x files
 # public_ip.db -> what is SQLite DB
 # index.html   -> HTML report with IP addresses, first seen, last, duration, etc
+# ip_to_sqlite.log -> logs 2x files rotated every 5 days
+# to se where are these files located do
+uv run python ip_to_sqlite.py dirs
 ```
 Idea is to run `python ip_to_sqlite.py` in crontab
 ```
