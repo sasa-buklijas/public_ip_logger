@@ -2,7 +2,7 @@
 Python program that log public IP address in SQLite database.  
 Only new/change IP is added to DB, if IP is same as last time program was run, then only `last_time_seen` column in table is updated.  
 
-Example of html report
+Example of html report:
 ![Example of html report](/documentation/screenshot/html_report.png)
 
 Made for Raspberry Pi Zero 2 W.  
@@ -38,7 +38,7 @@ Idea is to run ` public-ip-logger` from crontab every minute
 ```shell
 * * * * * ~/.local/bin/public-ip-logger  > ~/crontab-output-4-public-ip-logger.txt 2>&1
 # > ~/crontab-output-4-public-ip-logger.txt 2>&1
-# is recommended to seed/debug any errors 
+# is recommended to see/debug any errors 
 
 # look at index.html via web browser
 # you can also server index.html as static webpage with web server (eg. apache, nginx, etc)
