@@ -98,5 +98,5 @@ CREATE TABLE IF NOT EXISTS "gap" (
 -- idea is to populate it manually if user wants eg. "gap do to router reboot"
 ```
 
-
-
+## License  
+This project is licensed under the [AGPLv3](LICENSE).

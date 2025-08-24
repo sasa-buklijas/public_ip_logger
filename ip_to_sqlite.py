@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Saša Buklijaš
+# Licensed under the GNU Affero General Public License v3.0 (see LICENSE file)
+
 import io
 import time
 import random
