@@ -29,7 +29,7 @@ public-ip-logger
 # ip_to_sqlite.log -> logs 2x files rotated every 5 days
 
 # to see where are these files located do
-uv run python ip_to_sqlite.py dirs
+public-ip-logger dirs
 ```
 
 ## Crontab
