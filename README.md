@@ -46,7 +46,7 @@ Idea is to run ` public-ip-logger` from crontab every minute
 
 ## Upgrade
 ```shell
-# uv --upgrade will do reinstall ot latest version
+# uv --upgrade will do remove installed version and install latest version
 uv tool install --upgrade git+https://github.com/sasa-buklijas/public_ip_logger
 ```
 
