@@ -17,7 +17,8 @@ import dataset
 import requests
 import humanize
 import platformdirs
-#from tenacity import retry, stop_after_attempt, wait_fixed
+from uptime import uptime
+
 
 #@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))  # 2 attempts, 2 seconds between retries
 def get_public_ip() -> str:
@@ -197,6 +198,8 @@ def generate_webpage(program: str):
     current_time = datetime.now().astimezone()
     time_string = current_time.strftime("%Y-%m-%d %H:%M:%S %Z%z")
     html.write(f"<h1>Generated at: {time_string}</h1>\n")
+    #html.write(f"<h4>Uptime: {humanize.precisedelta(uptime())}</h4>\n")
+    html.write(f"<p><b>Uptime:</b> {humanize.precisedelta(uptime())}</p>\n")
 
     html.write("<h2>Public IP</h2><table border='1'>\n")
     columns = ['id', 'IP', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status']

@@ -1,6 +1,6 @@
 [project]
 name = "public-ip-logger"
-version = "1.1.9"
+version = "1.2.0"
 description = "Log public IP address in SQLite database"
 readme = "README.md"
 requires-python = ">=3.11.2"
@@ -10,6 +10,7 @@ dependencies = [
     "ping3>=5.1.5",
     "platformdirs>=4.3.8",
     "requests>=2.32.5",
+    "uptime>=3.0.1",
 ]
 
 [project.scripts]

@@ -241,7 +241,7 @@ wheels = [
 
 [[package]]
 name = "public-ip-logger"
-version = "1.1.9"
+version = "1.2.0"
 source = { virtual = "." }
 dependencies = [
     { name = "dataset" },
@@ -249,6 +249,7 @@ dependencies = [
     { name = "ping3" },
     { name = "platformdirs" },
     { name = "requests" },
+    { name = "uptime" },
 ]
 
 [package.metadata]
@@ -258,6 +259,7 @@ requires-dist = [
     { name = "ping3", specifier = ">=5.1.5" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "requests", specifier = ">=2.32.5" },
+    { name = "uptime", specifier = ">=3.0.1" },
 ]
 
 [[package]]
@@ -304,6 +306,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/98/5a/da40306b885cc8c09
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b5/00/d631e67a838026495268c2f6884f3711a15a9a2a96cd244fdaea53b823fb/typing_extensions-4.14.1-py3-none-any.whl", hash = "sha256:d1e1e3b58374dc93031d6eda2420a48ea44a36c2b4766a4fdeb3710755731d76", size = 43906, upload-time = "2025-07-04T13:28:32.743Z" },
 ]
+
+[[package]]
+name = "uptime"
+version = "3.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/53/6c420ddf6949097d6f9406358951c9322505849bea9cb79efe3acc0bb55d/uptime-3.0.1.tar.gz", hash = "sha256:7c300254775b807ce46e3dcbcda30aa3b9a204b9c57a7ac1e79ee6dbe3942973", size = 6630, upload-time = "2013-10-07T14:19:58.456Z" }
 
 [[package]]
 name = "urllib3"
