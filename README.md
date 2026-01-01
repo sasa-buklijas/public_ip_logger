@@ -8,6 +8,10 @@ Example of html report:
 Made for Raspberry Pi Zero 2 W.  
 Raspberry Pi Zero 2 W, at least in my experience get stuck ever few days/weeks, so there is `gap` table to track when it got stuck.  
 
+## Motivation
+Program was made to see how often ISP change public IP.  
+Few weeks after IP was not changed, even after ISP router reboot, I have found out about [CGNAT](https://en.wikipedia.org/wiki/Carrier-grade_NAT).   
+
 ## Installation
 Use [uv](https://docs.astral.sh/uv/) for installing, make sure to have it [installed](https://docs.astral.sh/uv/getting-started/installation/#standalone-installer).  
 ```shell
