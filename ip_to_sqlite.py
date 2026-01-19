@@ -84,7 +84,7 @@ class DB():
         self._gap_table = self._db['gap']
 
     def add_new_public_ip_row(self, ip: str, row_time: float):
-        return self._public_ip_table.insert(dict(ip=ip, first_time_seen=row_time, last_time_seen=row_time))
+        return self._public_ip_table.insert(dict(ip=ip, first_time_seen=row_time, last_time_seen=row_time, note='.'))
 
     def get_last_public_ip_row(self):
         #results = list(self._public_ip_table.all())
@@ -205,7 +205,7 @@ def generate_webpage(program: str):
     html.write(f"<p><b>Uptime:</b> {humanize.precisedelta(uptime())}</p>\n")
 
     html.write(f"<h2>({db.number_of_public_ip_rows()}) Public IP</h2><table border='1'>\n")
-    columns = ['id', 'IP', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status']
+    columns = ['id', 'IP', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status', 'Note']
     html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
 
     # public_ip table
@@ -218,6 +218,7 @@ def generate_webpage(program: str):
         first_time_seen = datetime.fromtimestamp(row['first_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
         last_time_seen = datetime.fromtimestamp(row['last_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
         duration = humanize.precisedelta(row['last_time_seen'] - row['first_time_seen'])
+        note = row.get('note', '...')
 
         if previous_last_time_seen:
             # if gape is more 90 seconds, that crontab was not successfully run every minute
@@ -225,7 +226,7 @@ def generate_webpage(program: str):
             if gap < 90:
                 status = 'ok'
             else:
-                status = 'STRANGE'
+                status = '>= 90s'
             # humanize for better display on webpage
             gap = humanize.precisedelta(row['first_time_seen'] - previous_last_time_seen)
         else:   # not possible to calculate for first row
@@ -240,7 +241,7 @@ def generate_webpage(program: str):
         previous_ip == row['ip']
         
         # add it to list
-        data = [row['id'], row['ip'], first_time_seen, last_time_seen, duration, gap, status]
+        data = [row['id'], row['ip'], first_time_seen, last_time_seen, duration, gap, status, note]
         table_rows_oldest_first.append(("<tr>" + "".join(f"<td>{val}</td>" for val in data) + "</tr>\n"))
     # need to reversed, because we want newest on the top(as first row in table)
     html.write("".join(reversed(table_rows_oldest_first)))
