@@ -83,21 +83,24 @@ class DB():
         self._error_table = self._db['errors']
         self._gap_table = self._db['gap']
 
-    def add_new_row(self, ip: str, row_time: float):
+    def add_new_public_ip_row(self, ip: str, row_time: float):
         return self._public_ip_table.insert(dict(ip=ip, first_time_seen=row_time, last_time_seen=row_time))
 
-    def get_last_row(self):
+    def get_last_public_ip_row(self):
         #results = list(self._public_ip_table.all())
         #logging.debug(f'{results=}')
         self._last_row = self._public_ip_table.find_one(order_by='-last_time_seen')
         #logging.debug(f'{self._last_row=}')
         return self._last_row
 
-    def update_last_time_seen(self, last_time_seen: float):
+    def update_public_ip_last_time_seen(self, last_time_seen: float):
         return self._public_ip_table.update(dict(id=self._last_row['id'], last_time_seen=last_time_seen), ['id'])
 
     def get_public_ip_rows(self, limit = None):
         return self._public_ip_table.find(order_by='last_time_seen', _limit=limit)
+
+    def number_of_public_ip_rows(self):
+        return self._public_ip_table.count()
 
     def insert_gap(self, start, end):
         self._gap_table.insert(dict(start=start, end=end, reason=''))
@@ -140,12 +143,12 @@ def public_ip_to_db():
     logging.info(f'API call took {(response_public_ip_time - program_start_time):.3f} {current_public_ip=}')
 
     db: DB = DB()
-    results = db.get_last_row()
+    last_ip_row = db.get_last_public_ip_row()
 
-    if results: # NOT first run
+    if last_ip_row: # NOT first run
         
-        last_public_ip = results['ip']
-        last_time_seen = results['last_time_seen']
+        last_public_ip = last_ip_row['ip']
+        last_time_seen = last_ip_row['last_time_seen']
         since_last_check = program_start_time - last_time_seen
 
         #logging.debug(f'{last_time_seen=} {since_last_check=}')
@@ -159,19 +162,19 @@ def public_ip_to_db():
         if current_public_ip == last_public_ip: # IP same
             logging.info(f'ip same {current_public_ip} == {last_public_ip}, {since_last_check:.1f} seconds since last run.')
 
-            rows_updated = db.update_last_time_seen(program_start_time)
+            rows_updated = db.update_public_ip_last_time_seen(program_start_time)
             if rows_updated != 1:
                 logging.error(f'SOME PROBLEM, EXPECTED 1 ROW UPDATED, but {rows_updated=}')
         else:   # if IP changed
             logging.info(f'ip NOT same {current_public_ip} != {last_public_ip}')
 
-            primary_key_id = db.add_new_row(current_public_ip , program_start_time)
+            primary_key_id = db.add_new_public_ip_row(current_public_ip , program_start_time)
             if primary_key_id > 1:
                     logging.error(f'SOME PROBLEM, EXPECTED > 1 for primary_key_id, but {primary_key_id=}')
 
     else:   # first run, no data in DB
         logging.info('First run')
-        primary_key_id = db.add_new_row(current_public_ip , program_start_time)
+        primary_key_id = db.add_new_public_ip_row(current_public_ip , program_start_time)
         if primary_key_id != 1:
                 logging.error(f'SOME PROBLEM, EXPECTED 1 for primary_key_id, but {primary_key_id=}')
 
@@ -201,7 +204,7 @@ def generate_webpage(program: str):
     #html.write(f"<h4>Uptime: {humanize.precisedelta(uptime())}</h4>\n")
     html.write(f"<p><b>Uptime:</b> {humanize.precisedelta(uptime())}</p>\n")
 
-    html.write("<h2>Public IP</h2><table border='1'>\n")
+    html.write(f"<h2>({db.number_of_public_ip_rows()}) Public IP</h2><table border='1'>\n")
     columns = ['id', 'IP', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status']
     html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
 
@@ -246,7 +249,7 @@ def generate_webpage(program: str):
     # error table
     error_rows = db.number_of_error_rows()
     if error_rows > 0:
-        html.write("<h2>Error</h2><table border='1'>\n")
+        html.write(f"<h2>({error_rows}) Error, problem with public IP get</h2><table border='1'>\n")
         columns = ['id', 'Time', 'Error']
         html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
         for row in db.get_error_rows():
@@ -260,7 +263,7 @@ def generate_webpage(program: str):
     gap_rows = db.number_of_gap_rows()
     #logging.debug(f'{gap_rows=}')
     if gap_rows > 0:
-        html.write("<h2>Gap</h2><table border='1'>\n")
+        html.write(f"<h2>({gap_rows}) Gap, if more than 180 seconds between public IP get</h2><table border='1'>\n")
         columns = ['id', 'Start Time', 'End Time', 'Gap Duration', 'Reason']
         html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
         for row in db.get_gap_rows():
@@ -333,7 +336,7 @@ def main():
         choices=['dirs', 'run'],  # only allow these values
         help="Mode to run: 'dirs' or 'run' (default: run)"
     )
-     # Version argument
+    # Version argument
     parser.add_argument(
         '-v', '--version',
         action='version',
