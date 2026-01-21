@@ -158,15 +158,13 @@ def get_boot_id() -> str | None:
     return boot_id
 
 
-def public_ip_to_db(program_start_time):
+def public_ip_to_db(db: DB, program_start_time):
     public_ip_to_db_start_time: float = time.time()
-    db = DB()
 
     try:
         current_public_ip: str = get_public_ip()
     except Exception as e:
         db.add_error(program_start_time, str(e))
-        db.close()
         logging.exception(e)
         return False
 
@@ -208,17 +206,13 @@ def public_ip_to_db(program_start_time):
         if primary_key_id != 1:
                 logging.error(f'SOME PROBLEM, EXPECTED 1 for primary_key_id, but {primary_key_id=}')
 
-    # to flush SQLite WAL
-    db.close()
-
     # 2x spaces for better output
     logging.info(f'public_ip_to_db  took {(time.time() - public_ip_to_db_start_time):.3f} seconds')
 
     return True
 
 
-def uptime_to_db(program_start_time: float):
-    db = DB()
+def uptime_to_db(db: DB, program_start_time: float):
     uptime_to_db_start_time: float = time.time()
 
     # uptime
@@ -248,20 +242,15 @@ def uptime_to_db(program_start_time: float):
         if primary_key_id != 1:
             logging.error(f'SOME PROBLEM, EXPECTED 1 for primary_key_id, but {primary_key_id=}')
 
-    # to flush SQLite WAL
-    db.close()
-
     # 5x spaces for better output
     logging.info(f'uptime_to_db     took {(time.time() - uptime_to_db_start_time):.3f} seconds')
 
     return True
 
 
-def generate_webpage(program: str):
+def generate_webpage(db: DB, program: str):
     start_time: float = time.time()
 
-    # DB access
-    db: DB = DB()
     rows_oldest_first = db.get_public_ip_rows()
 
     # Use StringIO to efficiently build the HTML in memory
@@ -402,9 +391,6 @@ def generate_webpage(program: str):
     with open(udd / "index.html", "w") as f:
         f.write(html.getvalue())
 
-    # to flush SQLite WAL
-    db.close()
-
     logging.info(f'generate_webpage took {(time.time() - start_time):.3f} seconds')
 
 
@@ -474,14 +460,17 @@ def main():
 
     try:
         logging.info(f'{parser.prog} v{version} ---START---')
-        program_start_time: float = time.time()
-        public_ip_to_db(program_start_time)
-        uptime_to_db(program_start_time)
-        generate_webpage(parser.prog)
 
+        program_start_time: float = time.time()
+        db: DB = DB()
+
+        public_ip_to_db(db, program_start_time)
+        uptime_to_db(db, program_start_time)
+        generate_webpage(db, parser.prog)
     except Exception as e:
         logging.exception(e)
     finally:
+        db.close()
         logging.info(f'{parser.prog} v{version} took {(time.time() - program_start_time):.3f} seconds ----END----')
 
 
