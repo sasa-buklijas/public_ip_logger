@@ -255,7 +255,7 @@ def generate_webpage(db: DB, program: str):
 
     # Use StringIO to efficiently build the HTML in memory
     html = io.StringIO()
-    html.write("<html><head><title>IP Logger</title></head><body>\n")
+    html.write('<html><head><title>IP Logger</title><meta charset="utf-8"></head><body>\n')
     from datetime import datetime
 
     # Get the current local time with the system's timezone
