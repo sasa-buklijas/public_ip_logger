@@ -17,7 +17,7 @@ import dataset
 import requests
 import humanize
 import platformdirs
-from uptime import uptime
+from uptime import uptime, boottime
 
 
 #@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))  # 2 attempts, 2 seconds between retries
@@ -76,25 +76,28 @@ class DB():
     def __init__(self):
         udd = Path(platformdirs.user_data_dir(PACKAGE_NAME, ensure_exists=True))
         #logging.debug(f'{udd=}')
-        db_path = udd / 'public_ip.db'
+        db_path: Path = udd / 'public_ip.db'
         #logging.debug(f'{db_path=}')
         self._db = dataset.connect(f'sqlite:///{db_path}')
         self._public_ip_table = self._db['public_ip']
         self._error_table = self._db['errors']
         self._gap_table = self._db['gap']
+        self._uptime_table = self._db['uptime']
 
+    def close(self):
+        self._db.close()
+
+    #
+    #   public_ip
+    #
     def add_new_public_ip_row(self, ip: str, row_time: float):
         return self._public_ip_table.insert(dict(ip=ip, first_time_seen=row_time, last_time_seen=row_time, note='.'))
 
     def get_last_public_ip_row(self):
-        #results = list(self._public_ip_table.all())
-        #logging.debug(f'{results=}')
-        self._last_row = self._public_ip_table.find_one(order_by='-last_time_seen')
-        #logging.debug(f'{self._last_row=}')
-        return self._last_row
+        return self._public_ip_table.find_one(order_by='-last_time_seen')
 
-    def update_public_ip_last_time_seen(self, last_time_seen: float):
-        return self._public_ip_table.update(dict(id=self._last_row['id'], last_time_seen=last_time_seen), ['id'])
+    def update_public_ip_last_time_seen(self, row_id: int, last_time_seen: float):
+        return self._public_ip_table.update(dict(id=row_id, last_time_seen=last_time_seen), ['id'])
 
     def get_public_ip_rows(self, limit = None):
         return self._public_ip_table.find(order_by='last_time_seen', _limit=limit)
@@ -102,6 +105,9 @@ class DB():
     def number_of_public_ip_rows(self):
         return self._public_ip_table.count()
 
+    #
+    #   gap
+    #
     def insert_gap(self, start, end):
         self._gap_table.insert(dict(start=start, end=end, reason=''))
 
@@ -111,6 +117,9 @@ class DB():
     def number_of_gap_rows(self):
         return self._gap_table.count()
 
+    #
+    #   error
+    #
     def number_of_error_rows(self):
         return self._error_table.count()
 
@@ -120,33 +129,54 @@ class DB():
     def add_error(self, uts: float, error: str):
         self._error_table.insert(dict(unix_time_stamp=uts, error=error))
 
-    def close(self):
-        self._db.close()
+    #
+    #   uptime
+    #
+    def add_uptime(self, boot_id: str, start_time: float, current_time: float):
+        return self._uptime_table.insert(dict(boot_id=boot_id, boot_time=start_time, last_time_seen=current_time, note='.'))
+
+    def get_last_uptime_row(self):
+        return self._uptime_table.find_one(order_by='-last_time_seen')
+
+    def update_uptime(self, row_id: int, current_time: float):
+        return self._uptime_table.update(dict(id=row_id, last_time_seen=current_time), ['id'])
+
+    def get_uptime_rows(self, limit = None):
+        return self._uptime_table.find(order_by='last_time_seen', _limit=limit)
+
+    def number_of_uptime_rows(self):
+        return self._uptime_table.count()
 
 
-def public_ip_to_db():
-    program_start_time = time.time()
+# works only on linux
+def get_boot_id() -> str | None:
     try:
-        current_public_ip = get_public_ip()
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            boot_id = f.read().strip()
+    except Exception:
+        boot_id = None
+    return boot_id
+
+
+def public_ip_to_db(program_start_time):
+    public_ip_to_db_start_time: float = time.time()
+    db = DB()
+
+    try:
+        current_public_ip: str = get_public_ip()
     except Exception as e:
-        db = DB()
         db.add_error(program_start_time, str(e))
         db.close()
-        #logging.debug(f'{e=} --- {str(e)=}')
         logging.exception(e)
         return False
-    #finally:
-    #    if get_public_ip.statistics['attempt_number'] != 1:
-    #        logging.warning(f'{get_public_ip.statistics=}')
-    response_public_ip_time = time.time()
+
+    response_public_ip_time: float = time.time()
     
     logging.info(f'API call took {(response_public_ip_time - program_start_time):.3f} {current_public_ip=}')
 
-    db: DB = DB()
     last_ip_row = db.get_last_public_ip_row()
 
-    if last_ip_row: # NOT first run
-        
+    if last_ip_row:
         last_public_ip = last_ip_row['ip']
         last_time_seen = last_ip_row['last_time_seen']
         since_last_check = program_start_time - last_time_seen
@@ -162,7 +192,7 @@ def public_ip_to_db():
         if current_public_ip == last_public_ip: # IP same
             logging.info(f'ip same {current_public_ip} == {last_public_ip}, {since_last_check:.1f} seconds since last run.')
 
-            rows_updated = db.update_public_ip_last_time_seen(program_start_time)
+            rows_updated = db.update_public_ip_last_time_seen(last_ip_row['id'], program_start_time)
             if rows_updated != 1:
                 logging.error(f'SOME PROBLEM, EXPECTED 1 ROW UPDATED, but {rows_updated=}')
         else:   # if IP changed
@@ -182,11 +212,53 @@ def public_ip_to_db():
     db.close()
 
     # 2x spaces for better output
-    logging.info(f'public_ip_to_db  took {(time.time() - program_start_time):.3f} seconds')
+    logging.info(f'public_ip_to_db  took {(time.time() - public_ip_to_db_start_time):.3f} seconds')
+
+    return True
+
+
+def uptime_to_db(program_start_time: float):
+    db = DB()
+    uptime_to_db_start_time: float = time.time()
+
+    # uptime
+    boot_id = get_boot_id()
+
+    last_uptime_row = db.get_last_uptime_row()
+    #logging.debug(f'{last_uptime_row=}')
+    boot_time = boottime()
+    boot_time_uts = boot_time.timestamp()   # uts is unix time stamp
+    #logging.debug(f'{boot_time=} {boot_time_uts=} {type(boot_time)=}')
+
+    if last_uptime_row:
+        if last_uptime_row['boot_id'] == boot_id:
+            if last_uptime_row['boot_time'] != boot_time_uts:
+                text: str = f"{last_uptime_row['boot_time']} not equal {boot_time_uts}, but {last_uptime_row['boot_id']} == {boot_id} Need investigation, should be same"
+                logging.warning(text)
+                db.add_error(program_start_time, text)
+
+            # update row with existing boot_id, leave original boot_time
+            db.update_uptime(last_uptime_row['id'], program_start_time)
+
+        else:
+            primary_key_id = db.add_uptime(boot_id, boot_time_uts, program_start_time)
+
+    else:
+        primary_key_id = db.add_uptime(boot_id, boot_time_uts, program_start_time)
+        if primary_key_id != 1:
+            logging.error(f'SOME PROBLEM, EXPECTED 1 for primary_key_id, but {primary_key_id=}')
+
+    # to flush SQLite WAL
+    db.close()
+
+    # 5x spaces for better output
+    logging.info(f'uptime_to_db     took {(time.time() - uptime_to_db_start_time):.3f} seconds')
+
+    return True
 
 
 def generate_webpage(program: str):
-    start_time = time.time()
+    start_time: float = time.time()
 
     # DB access
     db: DB = DB()
@@ -238,7 +310,7 @@ def generate_webpage(program: str):
         if previous_ip == row['ip']:
             logging.warning(f'{previous_ip} == {row["ip"]}, should not happen')
             status += ' SAME IP AS BEFORE'
-        previous_ip == row['ip']
+        previous_ip = row['ip']
         
         # add it to list
         data = [row['id'], row['ip'], first_time_seen, last_time_seen, duration, gap, status, note]
@@ -275,8 +347,55 @@ def generate_webpage(program: str):
             html.write("<tr>" + "".join(f"<td>{val}</td>" for val in [row['id'], start, end, duration, row['reason']]) + "</tr>\n")
         html.write("</table>")
 
+    #
+    # uptime table
+    #
+    rows_oldest_first = db.get_uptime_rows()
+
+    html.write(f"<h2>({db.number_of_uptime_rows()}) UpTime</h2><table border='1'>\n")
+    columns = ['id', 'Boot_id', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status', 'Note']
+    html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
+
+    table_rows_oldest_first = []
+    previous_last_time_seen = None
+    previous_boot_id = None
+    # rows_oldest_first because of gap calculation
+    for row in rows_oldest_first:
+        #logging.debug(row)
+        boot_time: str = datetime.fromtimestamp(row['boot_time']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        last_time_seen: str = datetime.fromtimestamp(row['last_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
+        duration: str = humanize.precisedelta(row['last_time_seen'] - row['boot_time'])
+        note = row.get('note', '...')
+
+        if previous_last_time_seen:
+            # if gape is more 90 seconds, that crontab was not successfully run every minute
+            gap = row['boot_time'] - previous_last_time_seen
+            if gap < 90:
+                status = 'ok'
+            else:
+                status = '>= 90s'
+            # humanize for better display on webpage
+            gap: str = humanize.precisedelta(row['boot_time'] - previous_last_time_seen)
+        else:   # not possible to calculate for first row
+            status = '-'
+            gap = '-'
+        previous_last_time_seen = row['last_time_seen'] # mut use row, to have it as float
+
+        # check if previous boot_id same, that should not happen
+        if previous_boot_id == row['boot_id']:
+            logging.warning(f'{previous_boot_id} == {row["boot_id"]}, should not happen')
+            status += ' SAME boot_id AS BEFORE'
+        previous_boot_id = row['boot_id']
+        
+        # add it to list
+        data = [row['id'], row['boot_id'], boot_time, last_time_seen, duration, gap, status, note]
+        table_rows_oldest_first.append(("<tr>" + "".join(f"<td>{val}</td>" for val in data) + "</tr>\n"))
+    # need to reversed, because we want newest on the top(as first row in table)
+    html.write("".join(reversed(table_rows_oldest_first)))
+    html.write("</table>")
+
     # Footer
-    html.write(f"<p>Generated by <a href=\"https://github.com/sasa-buklijas/public_ip_logger/\" target=\"_blank\" title=\"Go to program webpage\">{program}</a> version {get_version()}</p></body></html>\n")
+    html.write(f"<p>Generated by <a href=\"https://github.com/sasa-buklijas/public_ip_logger/\" target=\"_blank\" title=\"Go to program webpage\">{program}</a> version {get_version()} © 2026 <a href=\"https://buklijas.info\" target=\"_blank\" title=\"Go to author webpage\">Saša Buklijaš</a></p></body></html>\n")
 
     # Write to file
     udd = Path(platformdirs.user_data_dir(PACKAGE_NAME, ensure_exists=True))
@@ -355,12 +474,15 @@ def main():
 
     try:
         logging.info(f'{parser.prog} v{version} ---START---')
-        public_ip_to_db()
+        program_start_time: float = time.time()
+        public_ip_to_db(program_start_time)
+        uptime_to_db(program_start_time)
         generate_webpage(parser.prog)
+
     except Exception as e:
         logging.exception(e)
     finally:
-        logging.info(f'{parser.prog} v{version} ----END----')
+        logging.info(f'{parser.prog} v{version} took {(time.time() - program_start_time):.3f} seconds ----END----')
 
 
 if __name__ == '__main__':
