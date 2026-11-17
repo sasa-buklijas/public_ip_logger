@@ -1,23 +1,25 @@
 # Copyright (c) 2025 Saša Buklijaš
 # Licensed under the GNU Affero General Public License v3.0 (see LICENSE file)
 
-import io
-import time
-import random
-import tomllib
 import argparse
+import io
 import ipaddress
 import logging
 import logging.handlers
+import random
+import sys
+import time
+import tomllib
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from importlib.metadata import version, PackageNotFoundError
+
 # pip packages
-import ping3
 import dataset
-import requests
 import humanize
+import ping3
 import platformdirs
-from uptime import uptime, boottime
+import requests
+import uptime
 
 
 #@retry(stop=stop_after_attempt(2), wait=wait_fixed(2))  # 2 attempts, 2 seconds between retries
@@ -31,8 +33,8 @@ def get_public_ip() -> str:
     #external_api = (IPINFO,)   # just for developer , when adding new enteral API for IP, to test is 
     external_ip = '__UNKNOWN_IP__'
 
-    eairo = random.sample(external_api, k=len(external_api)) # external_api_in_random_order
-    for url in eairo:
+    all_external_api_in_random_order = random.sample(external_api, k=len(external_api)) # external_api_in_random_order
+    for url in all_external_api_in_random_order:
         try:
             response = requests.get(url, timeout=5)  # 5-second timeout
             response.raise_for_status()  # Raise HTTP errors (4xx, 5xx)
@@ -72,7 +74,7 @@ def get_public_ip() -> str:
 
 
 # to remove and abstract complexity of DB operations
-class DB():
+class DB:
     def __init__(self):
         udd = Path(platformdirs.user_data_dir(PACKAGE_NAME, ensure_exists=True))
         #logging.debug(f'{udd=}')
@@ -91,13 +93,13 @@ class DB():
     #   public_ip
     #
     def add_new_public_ip_row(self, ip: str, row_time: float):
-        return self._public_ip_table.insert(dict(ip=ip, first_time_seen=row_time, last_time_seen=row_time, note='.'))
+        return self._public_ip_table.insert({'ip': ip, 'first_time_seen': row_time, 'last_time_seen': row_time, 'note': '.'})
 
     def get_last_public_ip_row(self):
         return self._public_ip_table.find_one(order_by='-last_time_seen')
 
     def update_public_ip_last_time_seen(self, row_id: int, last_time_seen: float):
-        return self._public_ip_table.update(dict(id=row_id, last_time_seen=last_time_seen), ['id'])
+        return self._public_ip_table.update({'id': row_id, 'last_time_seen': last_time_seen}, ['id'])
 
     def get_public_ip_rows(self, limit = None):
         return self._public_ip_table.find(order_by='last_time_seen', _limit=limit)
@@ -109,7 +111,7 @@ class DB():
     #   gap
     #
     def insert_gap(self, start, end):
-        self._gap_table.insert(dict(start=start, end=end, reason=''))
+        self._gap_table.insert({'start': start, 'end': end, 'reason': ''})
 
     def get_gap_rows(self, limit = None):
         return self._gap_table.find(order_by='-end', _limit=limit)
@@ -127,22 +129,22 @@ class DB():
         return self._error_table.find(order_by='-unix_time_stamp', _limit=limit)
 
     def add_error(self, uts: float, error: str):
-        self._error_table.insert(dict(unix_time_stamp=uts, error=error))
+        self._error_table.insert({'unix_time_stamp': uts, 'error': error})
 
     #
     #   uptime
     #
     def add_uptime(self, boot_id: str, start_time: float, current_time: float):
-        return self._uptime_table.insert(dict(boot_id=boot_id, boot_time=start_time, last_time_seen=current_time, note='.'))
+        return self._uptime_table.insert({'boot_id': boot_id, 'boot_time': start_time, 'last_time_seen': current_time, 'note': '.'})
 
     def get_last_uptime_row(self):
         return self._uptime_table.find_one(order_by='-last_time_seen')
 
     def update_uptime(self, row_id: int, current_time: float):
-        return self._uptime_table.update(dict(id=row_id, last_time_seen=current_time), ['id'])
+        return self._uptime_table.update({'id': row_id, 'last_time_seen': current_time}, ['id'])
 
     def update_boot_time(self, row_id: int, start_time: float):
-        return self._uptime_table.update(dict(id=row_id, boot_time=start_time), ['id'])
+        return self._uptime_table.update({'id': row_id, 'boot_time': start_time}, ['id'])
 
     def get_uptime_rows(self, limit = None):
         return self._uptime_table.find(order_by='last_time_seen', _limit=limit)
@@ -156,7 +158,7 @@ def get_boot_id() -> str | None:
     try:
         with open("/proc/sys/kernel/random/boot_id") as f:
             boot_id = f.read().strip()
-    except Exception:
+    except Exception:  # noqa: BLE001
         boot_id = None
     return boot_id
 
@@ -168,7 +170,7 @@ def public_ip_to_db(db: DB, program_start_time):
         current_public_ip: str = get_public_ip()
     except Exception as e:
         db.add_error(program_start_time, str(e))
-        logging.exception(e)
+        logging.exception()
         return False
 
     response_public_ip_time: float = time.time()
@@ -223,7 +225,7 @@ def uptime_to_db(db: DB, program_start_time: float):
 
     last_uptime_row = db.get_last_uptime_row()
     #logging.debug(f'{last_uptime_row=}')
-    boot_time = boottime()
+    boot_time = uptime.boottime()
     boot_time_uts = boot_time.timestamp()   # uts is unix time stamp
     #logging.debug(f'{boot_time=} {boot_time_uts=} {type(boot_time)=}')
 
@@ -272,7 +274,7 @@ def generate_webpage(db: DB, program: str):
     time_string = current_time.strftime("%Y-%m-%d %H:%M:%S %Z%z")
     html.write(f"<h1>Generated at: {time_string}</h1>\n")
     #html.write(f"<h4>Uptime: {humanize.precisedelta(uptime())}</h4>\n")
-    html.write(f"<p><b>Uptime:</b> {humanize.precisedelta(uptime())}</p>\n")
+    html.write(f"<p><b>Uptime:</b> {humanize.precisedelta(uptime.uptime())}</p>\n")
 
     html.write(f"<h2>({db.number_of_public_ip_rows()}) Public IP</h2><table border='1'>\n")
     columns = ['id', 'IP', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status', 'Note']
@@ -312,7 +314,7 @@ def generate_webpage(db: DB, program: str):
         
         # add it to list
         data = [row['id'], row['ip'], first_time_seen, last_time_seen, duration, gap, status, note]
-        table_rows_oldest_first.append(("<tr>" + "".join(f"<td>{val}</td>" for val in data) + "</tr>\n"))
+        table_rows_oldest_first.append("<tr>" + "".join(f"<td>{val}</td>" for val in data) + "</tr>\n")
     # need to reversed, because we want newest on the top(as first row in table)
     html.write("".join(reversed(table_rows_oldest_first)))
     html.write("</table>")
@@ -387,7 +389,7 @@ def generate_webpage(db: DB, program: str):
         
         # add it to list
         data = [row['id'], row['boot_id'], boot_time, last_time_seen, duration, gap, status, note]
-        table_rows_oldest_first.append(("<tr>" + "".join(f"<td>{val}</td>" for val in data) + "</tr>\n"))
+        table_rows_oldest_first.append("<tr>" + "".join(f"<td>{val}</td>" for val in data) + "</tr>\n")
     # need to reversed, because we want newest on the top(as first row in table)
     html.write("".join(reversed(table_rows_oldest_first)))
     html.write("</table>")
@@ -415,7 +417,7 @@ def get_version():
             with open(pyproject, "rb") as f:
                 data = tomllib.load(f)
             return data["project"]["version"]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return "unknown"
 
 
@@ -465,7 +467,7 @@ def main():
         uld = Path(platformdirs.user_log_dir(PACKAGE_NAME, ensure_exists=True))
         print(f'Program data directory: {udd}')
         print(f'Program  log directory: {uld}')
-        exit(0)
+        sys.exit(0)
 
     try:
         logging.info(f'{parser.prog} v{version} ---START---')
@@ -476,8 +478,8 @@ def main():
         public_ip_to_db(db, program_start_time)
         uptime_to_db(db, program_start_time)
         generate_webpage(db, parser.prog)
-    except Exception as e:
-        logging.exception(e)
+    except Exception:
+        logging.exception()
     finally:
         db.close()
         logging.info(f'{parser.prog} v{version} took {(time.time() - program_start_time):.3f} seconds ----END----')

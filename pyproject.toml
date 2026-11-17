@@ -1,6 +1,6 @@
 [project]
 name = "public-ip-logger"
-version = "1.5.1"
+version = "1.5.2"
 description = "Log public IP address in SQLite database"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,3 +15,8 @@ dependencies = [
 
 [project.scripts]
 public-ip-logger = "ip_to_sqlite:main"
+
+[tool.ruff.lint]
+# ignore "* called on root logger, Use your own logger instead"
+# not benefit for this small project
+ignore = ["LOG015"]

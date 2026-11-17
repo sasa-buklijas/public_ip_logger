@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [[package]]
@@ -245,7 +245,7 @@ wheels = [
 
 [[package]]
 name = "public-ip-logger"
-version = "1.5.1"
+version = "1.5.2"
 source = { virtual = "." }
 dependencies = [
     { name = "dataset" },
