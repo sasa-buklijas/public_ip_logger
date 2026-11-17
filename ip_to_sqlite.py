@@ -126,10 +126,31 @@ class DB:
         return self._error_table.count()
 
     def get_error_rows(self, limit = None):
-        return self._error_table.find(order_by='-unix_time_stamp', _limit=limit)
+        return self._error_table.find(order_by='-last_time_seen', _limit=limit)
 
     def add_error(self, uts: float, error: str):
-        self._error_table.insert({'unix_time_stamp': uts, 'error': error})
+        # prvo dohvatiti zadnji error
+        last_error_row = self._error_table.find_one(order_by='-last_time_seen')
+        #logging.debug(last_error_row)
+
+        if last_error_row:
+            duration = uts - last_error_row['last_time_seen']
+            if duration < 180:
+                # if it is same error
+                if error == last_error_row['error']:
+                    # update time of last error
+                    self._error_table.update({'id': last_error_row['id'], 'last_time_seen': uts, 'counter': last_error_row['counter'] + 1}, ['id'])
+                else:
+                    self._new_error(uts, error)
+            else:
+                # threat it as new error, even if it is same error text
+                self._new_error(uts, error)
+        # first error in table
+        else:
+            self._new_error(uts, error)
+
+    def _new_error(self, uts: float, error: str):
+        self._error_table.insert({'first_time_seen': uts, 'last_time_seen': uts, 'counter': 1, 'error': error, 'note': '.'})
 
     #
     #   uptime
@@ -170,7 +191,7 @@ def public_ip_to_db(db: DB, program_start_time):
         current_public_ip: str = get_public_ip()
     except Exception as e:
         db.add_error(program_start_time, str(e))
-        logging.exception()
+        logging.exception("Error while get_public_ip()")
         return False
 
     response_public_ip_time: float = time.time()
@@ -239,7 +260,8 @@ def uptime_to_db(db: DB, program_start_time: float):
 
                 text: str = f"For {boot_id=} boot_time moved {boot_time_uts - last_uptime_row['boot_time']}, DB row updated."
                 logging.warning(text)
-                db.add_error(program_start_time, text)
+                # does not make sense to add this problem to DB
+                #db.add_error(program_start_time, text)
 
             # update row with existing boot_id, leave original boot_time
             db.update_uptime(last_uptime_row['id'], program_start_time)
@@ -259,6 +281,20 @@ def uptime_to_db(db: DB, program_start_time: float):
     return True
 
 
+def format_duration(delta, start="days"):
+    total_seconds = int(delta)
+
+    days, remainder = divmod(total_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    if start == "hours":
+        hours += days * 24
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    return f"{days:02d}:{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
 def generate_webpage(db: DB, program: str):
     start_time: float = time.time()
 
@@ -273,11 +309,10 @@ def generate_webpage(db: DB, program: str):
     current_time = datetime.now().astimezone()
     time_string = current_time.strftime("%Y-%m-%d %H:%M:%S %Z%z")
     html.write(f"<h1>Generated at: {time_string}</h1>\n")
-    #html.write(f"<h4>Uptime: {humanize.precisedelta(uptime())}</h4>\n")
     html.write(f"<p><b>Uptime:</b> {humanize.precisedelta(uptime.uptime())}</p>\n")
 
     html.write(f"<h2>({db.number_of_public_ip_rows()}) Public IP</h2><table border='1'>\n")
-    columns = ['id', 'IP', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status', 'Note']
+    columns = ['id', 'IP', 'Start Time', 'End Time', 'Duration<br>dd:hh:mm:ss', 'Gap', 'Status', 'Note']
     html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
 
     # public_ip table
@@ -289,7 +324,8 @@ def generate_webpage(db: DB, program: str):
         #logging.debug(row)
         first_time_seen = datetime.fromtimestamp(row['first_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
         last_time_seen = datetime.fromtimestamp(row['last_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
-        duration = humanize.precisedelta(row['last_time_seen'] - row['first_time_seen'])
+        #duration = humanize.precisedelta(row['last_time_seen'] - row['first_time_seen'])
+        duration = format_duration(row['last_time_seen'] - row['first_time_seen'])
         note = row.get('note', '...')
 
         if previous_last_time_seen:
@@ -323,13 +359,18 @@ def generate_webpage(db: DB, program: str):
     error_rows = db.number_of_error_rows()
     if error_rows > 0:
         html.write(f"<h2>({error_rows}) Error, problem with public IP get</h2><table border='1'>\n")
-        columns = ['id', 'Time', 'Error']
+        columns = ['id', 'Start', 'End', 'Duration<br>hh:mm:ss', 'Counter', 'Error', 'Note']
         html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
         for row in db.get_error_rows():
             #logging.debug(f'{row=}')
-            utc = datetime.fromtimestamp(row['unix_time_stamp']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
+            first_time_seen = datetime.fromtimestamp(row['first_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
+            last_time_seen = datetime.fromtimestamp(row['last_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
+            #duration = humanize.precisedelta(row['last_time_seen'] - row['first_time_seen'])
+            duration = format_duration(row['last_time_seen'] - row['first_time_seen'], start='hours')
+            counter = row.get('counter', 'UNKNOWN')
+            note = row.get('note', '...')
             error = row['error']
-            html.write("<tr>" + "".join(f"<td>{val}</td>" for val in [row['id'], utc, error]) + "</tr>\n")
+            html.write("<tr>" + "".join(f"<td>{val}</td>" for val in [row['id'], first_time_seen, last_time_seen, duration, counter, error, note]) + "</tr>\n")
         html.write("</table>")
 
     # gap table
@@ -337,13 +378,14 @@ def generate_webpage(db: DB, program: str):
     #logging.debug(f'{gap_rows=}')
     if gap_rows > 0:
         html.write(f"<h2>({gap_rows}) Gap, if more than 180 seconds between public IP get</h2><table border='1'>\n")
-        columns = ['id', 'Start Time', 'End Time', 'Gap Duration', 'Reason']
+        columns = ['id', 'Start Time', 'End Time', 'Duration<br>hh:mm:ss', 'Reason']
         html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
         for row in db.get_gap_rows():
             #logging.debug(f'{row=}')
             start = datetime.fromtimestamp(row['start']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
             end = datetime.fromtimestamp(row['end']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
-            duration = humanize.precisedelta(row['end'] - row['start'])
+            #duration = humanize.precisedelta(row['end'] - row['start'])
+            duration = format_duration(row['end'] - row['start'], start='hours')
             html.write("<tr>" + "".join(f"<td>{val}</td>" for val in [row['id'], start, end, duration, row['reason']]) + "</tr>\n")
         html.write("</table>")
 
@@ -353,7 +395,7 @@ def generate_webpage(db: DB, program: str):
     rows_oldest_first = db.get_uptime_rows()
 
     html.write(f"<h2>({db.number_of_uptime_rows()}) UpTime</h2><table border='1'>\n")
-    columns = ['id', 'Boot_id', 'Start Time', 'End Time', 'Duration', 'Gap', 'Status', 'Note']
+    columns = ['id', 'Boot_id', 'Start Time', 'End Time', 'Duration<br>dd:hh:mm:ss', 'Gap', 'Status', 'Note']
     html.write("<tr>" + "".join(f"<th>{col}</th>" for col in columns) + "</tr>\n")
 
     table_rows_oldest_first = []
@@ -364,7 +406,8 @@ def generate_webpage(db: DB, program: str):
         #logging.debug(row)
         boot_time: str = datetime.fromtimestamp(row['boot_time']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
         last_time_seen: str = datetime.fromtimestamp(row['last_time_seen']).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z%z")
-        duration: str = humanize.precisedelta(row['last_time_seen'] - row['boot_time'])
+        #duration: str = humanize.precisedelta(row['last_time_seen'] - row['boot_time'])
+        duration: str = format_duration(row['last_time_seen'] - row['boot_time'])
         note = row.get('note', '...')
 
         if previous_last_time_seen:
@@ -441,6 +484,7 @@ def main():
             logging.StreamHandler()
         ]
     )
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     version = get_version()
     
@@ -479,7 +523,7 @@ def main():
         uptime_to_db(db, program_start_time)
         generate_webpage(db, parser.prog)
     except Exception:
-        logging.exception()
+        logging.exception("main() Exception")
     finally:
         db.close()
         logging.info(f'{parser.prog} v{version} took {(time.time() - program_start_time):.3f} seconds ----END----')

@@ -84,8 +84,11 @@ CREATE TABLE public_ip (
 -- useful for debug and to troubleshot Raspberry Pi 
 CREATE TABLE errors (
         id INTEGER NOT NULL, 
-        unix_time_stamp FLOAT, 
-        error TEXT, 
+        first_time_seen FLOAT, 
+        last_time_seen FLOAT,
+        counter INTEGER
+        error TEXT,  
+        note TEXT, 
         PRIMARY KEY (id)
 );
 
